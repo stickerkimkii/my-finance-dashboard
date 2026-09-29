@@ -70,7 +70,7 @@ dialog input,dialog select{width:100%;font:inherit;font-size:14px;padding:8px 10
 <main>
 <h1>สวัสดี คุณ Orawee</h1>
 <p class="sub" id="sub"></p>
-<div class="tools"><button class="btn" onclick="openForm(-1)">+ เพิ่มรายการ</button><button class="btn ghost" onclick="$('file').click()">นำเข้า Excel</button><button class="btn ghost" onclick="exp()">ส่งออก Excel (สำรองข้อมูล)</button><input type="file" id="file" accept=".xlsx,.xls" hidden onchange="imp(event)"></div>
+<div class="tools"><button class="btn" onclick="openForm(-1)">+ เพิ่มรายการ</button><button class="btn ghost" onclick="$('file').click()">นำเข้า Excel</button><button class="btn ghost" onclick="exp()">ส่งออก Excel (สำรองข้อมูล)</button><button class="btn ghost" onclick="openSync()">เชื่อม Google Sheets</button><span id="sync" style="font-size:12px;align-self:center;color:var(--mut)"></span><input type="file" id="file" accept=".xlsx,.xls" hidden onchange="imp(event)"></div>
 <div class="empty" id="empty">ยังไม่มีข้อมูล ข้อมูลของคุณเก็บอยู่ในเบราว์เซอร์นี้เท่านั้น กด <b>นำเข้า Excel</b> เพื่อโหลดไฟล์ Financial_Dashboard_Orawee.xlsx หรือกด <b>เพิ่มรายการ</b> เพื่อเริ่มกรอกเอง</div>
 <div class="grid">
 <div class="c y"><div class="blob"></div><h3>สรุปเดือนนี้</h3><div class="stats" id="stats"></div><div id="bars"></div></div>
@@ -83,6 +83,8 @@ dialog input,dialog select{width:100%;font:inherit;font-size:14px;padding:8px 10
 <div class="side"><h3>เลือกเดือน</h3><div class="months" id="months"></div>
 <h3 id="debts">ตารางผ่อนชำระ</h3><div style="margin-top:10px" id="debtlist"></div></div>
 </div>
+<dialog id="sdlg"><h3>เชื่อม Google Sheets</h3><label>ลิงก์ Web app (ลงท้ายด้วย /exec)<input id="su"></label><label>รหัสผ่านที่ตั้งไว้ใน Apps Script<input id="st" type="password"></label>
+<div class="acts"><button class="btn" onclick="conn()">เชื่อมต่อ</button><button class="btn ghost" onclick="disc()">ยกเลิกการเชื่อมต่อ</button><button class="btn ghost" onclick="$('sdlg').close()">ปิด</button></div></dialog>
 <dialog id="dlg"><h3 id="dt"></h3>
 <label>เดือน<select id="fm"></select></label><label>วันที่ (ไม่ระบุก็ได้)<input id="fd" placeholder="เช่น 21/10/2026"></label>
 <label>รายการ<input id="fi"></label><label>หมวด<input id="fc" list="cl"></label><datalist id="cl"></datalist>
@@ -93,7 +95,22 @@ dialog input,dialog select{width:100%;font:inherit;font-size:14px;padding:8px 10
 const M=["ต.ค. 2026","พ.ย. 2026","ธ.ค. 2026","ม.ค. 2027","ก.พ. 2027","มี.ค. 2027","เม.ย. 2027","พ.ค. 2027","มิ.ย. 2027","ก.ค. 2027","ส.ค. 2027","ก.ย. 2027"];
 const KEY='orawee-fin-v1';let ST={};try{ST=JSON.parse(localStorage.getItem(KEY))||{}}catch(e){}
 let ROWS=ST.rows||[],DEBTS=ST.debts||[],ei=-1;
-const save=()=>{try{localStorage.setItem(KEY,JSON.stringify({rows:ROWS,debts:DEBTS}))}catch(e){alert('บันทึกไม่ได้ เบราว์เซอร์อาจบล็อกการเก็บข้อมูล')}};
+const SK='orawee-sync';let SY={};try{SY=JSON.parse(localStorage.getItem(SK))||{}}catch(e){}
+let ready=false,pend=null,busy=false;const GEN='กรุณาแก้เป็นยอดจริงเมื่อจ่าย';
+function status(t,c){const e=document.getElementById('sync');if(e){e.textContent=t;e.style.color=c||''}}
+function local(){try{localStorage.setItem(KEY,JSON.stringify({rows:ROWS,debts:DEBTS}))}catch(e){alert('บันทึกในเบราว์เซอร์ไม่ได้ อาจถูกบล็อกการเก็บข้อมูล')}}
+function save(){local();if(SY.url&&ready){status('กำลังบันทึก…');clearTimeout(pend);pend=setTimeout(push,700)}}
+async function push(){pend=null;busy=true;try{const r=await fetch(SY.url,{method:'POST',body:JSON.stringify({token:SY.token,rows:ROWS,debts:DEBTS})});const j=await r.json();if(!j.ok)throw new Error(j.error);status('ซิงก์กับ Google Sheets แล้ว ✓')}catch(e){status('บันทึกขึ้น Google Sheets ไม่สำเร็จ: '+e.message,'#c2410c')}busy=false}
+async function pull(first){status('กำลังโหลดจาก Google Sheets…');try{const r=await fetch(SY.url+'?token='+encodeURIComponent(SY.token));const j=await r.json();if(!j.ok)throw new Error(j.error);
+ const rows=j.rows.map(x=>{if(x[6]===GEN)x[6]='ประมาณการ — แก้เป็นยอดจริงได้';return x});
+ if(first&&!rows.length&&ROWS.length){if(confirm('Google Sheet ยังว่างอยู่ ส่งข้อมูลในเครื่องนี้ขึ้นไปไหม?')){ready=true;await push();return}ready=false;status('ยังไม่ซิงก์');return}
+ if(first&&rows.length&&ROWS.length&&!confirm('ข้อมูลในเครื่องนี้จะถูกแทนที่ด้วยข้อมูลจาก Google Sheets ตกลงไหม?')){ready=false;status('ยังไม่ซิงก์');return}
+ ROWS=rows;DEBTS=j.debts;local();ready=true;render();status('ซิงก์กับ Google Sheets แล้ว ✓')}catch(e){ready=false;status('เชื่อมต่อไม่สำเร็จ: '+e.message,'#c2410c')}}
+function openSync(){$('su').value=SY.url||'';$('st').value=SY.token||'';$('sdlg').showModal()}
+function conn(){const u=$('su').value.trim(),k=$('st').value;if(!/^https:\/\/script\.google\.com\//.test(u)||!k){alert('กรอกลิงก์ Web app (ขึ้นต้นด้วย https://script.google.com/) และรหัสผ่านให้ครบ');return}
+ SY={url:u,token:k};localStorage.setItem(SK,JSON.stringify(SY));$('sdlg').close();pull(true)}
+function disc(){SY={};ready=false;localStorage.removeItem(SK);status('ยังไม่ได้เชื่อม Google Sheets (เก็บข้อมูลในเบราว์เซอร์นี้)');$('sdlg').close()}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&SY.url&&ready&&!pend&&!busy)pull(false)});
 const ICON={"รายรับ":"💵","บ้าน":"🏠","ที่อยู่อาศัย":"🏢","เดินทาง":"⛽","ใช้ชีวิต":"🍜","แมว":"🐱","สาธารณูปโภค":"💡","หนี้/ผ่อน":"💳"};
 const f=n=>Number(n).toLocaleString('en-US',{maximumFractionDigits:2});
 const S=m=>{const r=ROWS.filter(x=>x[0]===m);const i=r.reduce((a,x)=>a+x[3],0),o=r.reduce((a,x)=>a+x[4],0);
@@ -143,7 +160,7 @@ function exp(){const wb=XLSX.utils.book_new();
  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(DEBTS.map(x=>({'หนี้/รายการ':x[0],'ยอด/งวด':x[1],'งวดปัจจุบัน':x[2]||'—','งวดทั้งหมด':x[3]||'—','งวดสุดท้าย':x[4],'หมายเหตุ':x[5]}))),'Debt Tracker');
  XLSX.writeFile(wb,'Financial_Dashboard_backup.xlsx')}
 function pick(k){cur=k;sel=0;render()}
-render();
+render();status(SY.url?'':'ยังไม่ได้เชื่อม Google Sheets (เก็บข้อมูลในเบราว์เซอร์นี้)');if(SY.url)pull(false);
 </script>
 </body>
 </html>
