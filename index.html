@@ -58,6 +58,8 @@ dialog::backdrop{background:#0006}dialog h3{font-weight:500;margin-bottom:10px}
 dialog label{display:block;font-size:12px;color:var(--mut);margin-top:10px}
 dialog input,dialog select{width:100%;font:inherit;font-size:14px;padding:8px 10px;border-radius:10px;border:1px solid #0003;background:#fff;margin-top:3px;color:var(--ink)}
 :focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.c.w{grid-column:1/-1;background:var(--card);min-height:0}.meter.big{height:10px;margin-top:12px;background:#0002}
+.qa{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}.qa input{flex:1;min-width:120px;font:inherit;font-size:14px;padding:8px 12px;border-radius:20px;border:1px solid #0003;background:#fff;color:var(--ink)}.qa input[type=number]{flex:0 0 110px;min-width:90px}
 @media(max-width:1100px){.app{grid-template-columns:1fr}aside{position:static;height:auto;min-height:0;display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:12px}.logo{margin:0 12px 0 0;font-size:20px}aside small{display:none}}
 @media(max-width:700px){.grid,.low{grid-template-columns:1fr}h1{font-size:26px}}
 </style>
@@ -77,6 +79,9 @@ dialog input,dialog select{width:100%;font:inherit;font-size:14px;padding:8px 10
 <div class="c p"><h3>เงินเหลือรายเดือน</h3><div class="stats" id="pstats"></div><div id="line"></div></div>
 <div class="c g"><h3>แยกตามหมวด</h3><div id="cats"></div></div>
 <div class="c b"><div class="blob"></div><h3>ภาระหนี้เดือนนี้</h3><div class="stats" id="dstats"></div><div id="dnote" style="font-size:12px;margin-top:12px;color:#334"></div></div>
+<div class="c w"><h3>งบอาหาร + ของใช้ส่วนตัว</h3><div class="stats" id="lstats"></div><div class="meter big" id="lbar"></div>
+<div class="qa"><input id="qn" placeholder="ซื้ออะไร เช่น ข้าวเย็น"><input id="qa" type="number" min="0" step="0.01" placeholder="บาท" onkeydown="if(event.key==='Enter')quick()"><button class="btn" onclick="quick()">+ เพิ่มรายจ่าย</button></div>
+<div id="lnote" style="font-size:12px;margin-top:10px;color:var(--mut)"></div></div>
 </div>
 <div class="low" id="items"><div class="list"><h3 id="lt"></h3><div id="list"></div></div><div class="det"><h3>รายละเอียด</h3><div class="c" id="det"></div></div></div>
 </main>
@@ -113,8 +118,11 @@ function disc(){SY={};ready=false;localStorage.removeItem(SK);status('ยัง�
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&SY.url&&ready&&!pend&&!busy)pull(false)});
 const ICON={"รายรับ":"💵","บ้าน":"🏠","ที่อยู่อาศัย":"🏢","เดินทาง":"⛽","ใช้ชีวิต":"🍜","แมว":"🐱","สาธารณูปโภค":"💡","หนี้/ผ่อน":"💳"};
 const f=n=>Number(n).toLocaleString('en-US',{maximumFractionDigits:2});
-const S=m=>{const r=ROWS.filter(x=>x[0]===m);const i=r.reduce((a,x)=>a+x[3],0),o=r.reduce((a,x)=>a+x[4],0);
- const d=r.filter(x=>x[2]==="หนี้/ผ่อน").reduce((a,x)=>a+x[4],0);return{r,i,o,d,left:i-o}};
+const BUD='อาหาร + ของใช้ส่วนตัว',LIFE='ใช้ชีวิต';
+const S=m=>{const r=ROWS.filter(x=>x[0]===m);const i=r.reduce((a,x)=>a+x[3],0);
+ const life=r.filter(x=>x[2]===LIFE),bud=life.filter(x=>x[1]===BUD).reduce((a,x)=>a+x[4],0),spent=life.filter(x=>x[1]!==BUD).reduce((a,x)=>a+x[4],0),eff=Math.max(bud,spent);
+ const o=r.filter(x=>x[2]!==LIFE).reduce((a,x)=>a+x[4],0)+eff;
+ const d=r.filter(x=>x[2]==="หนี้/ผ่อน").reduce((a,x)=>a+x[4],0);return{r,i,o,d,left:i-o,bud,spent,eff}};
 let cur=0,sel=0;const $=id=>document.getElementById(id);
 function smooth(p){let d=`M${p[0][0]},${p[0][1]}`;for(let k=1;k<p.length;k++){const[a,b]=p[k-1],[c,e]=p[k],h=(a+c)/2;d+=` C${h},${b} ${h},${e} ${c},${e}`}return d}
 function render(){
@@ -128,20 +136,28 @@ function render(){
  const pts=bl.map((v,k)=>[10+k*(380/11),10+(hi-v)/rg*80]),zy=10+hi/rg*80;
  $('pstats').innerHTML=`<div><b>${f(all.reduce((a,x)=>a+x.i,0))}</b><span>เงินเข้ารวม 12 เดือน</span></div><div><b>${f(all.reduce((a,x)=>a+x.o,0))}</b><span>เงินออกรวม</span></div>`;
  $('line').innerHTML=`<svg viewBox="0 0 400 118" style="margin-top:8px"><line x1="10" x2="390" y1="${zy}" y2="${zy}" stroke="#0004" stroke-dasharray="3 3"/><path d="${smooth(pts)}" fill="none" stroke="#151515" stroke-width="2"/><line x1="${pts[cur][0]}" x2="${pts[cur][0]}" y1="6" y2="98" stroke="#151515" stroke-dasharray="3 3"/><circle cx="${pts[cur][0]}" cy="${pts[cur][1]}" r="5" fill="#151515"/>${pts.map((p,k)=>`<text x="${p[0]}" y="112" font-size="8" text-anchor="middle" fill="#333">${M[k].split(' ')[0]}</text>`).join('')}</svg>${bl.slice(1).some(v=>v<0)&&all.slice(1).every(x=>x.i===0)?'<div class="warn">เดือน พ.ย. เป็นต้นไปยังไม่มีรายรับในไฟล์ จึงแสดงเป็นติดลบ</div>':''}`;
- const cats={};s.r.filter(x=>x[4]>0).forEach(x=>cats[x[2]]=(cats[x[2]]||0)+x[4]);
+ const cats={};s.r.filter(x=>x[4]>0&&x[2]!==LIFE).forEach(x=>cats[x[2]]=(cats[x[2]]||0)+x[4]);if(s.eff)cats[LIFE]=s.eff;
  const ce=Object.entries(cats).sort((a,b)=>b[1]-a[1]);
  $('cats').innerHTML=ce.map(([k,v])=>`<div class="cat"><span>${ICON[k]||''} ${k}</span><b>${f(v)}</b></div><div class="meter"><i style="width:${v/s.o*100}%"></i></div>`).join('')||'ไม่มีรายจ่าย';
  const cx=s.r.filter(x=>x[1].startsWith('CardX')).reduce((a,x)=>a+x[4],0),sp=s.r.filter(x=>x[1]==='SPayLater').reduce((a,x)=>a+x[4],0),uc=s.r.filter(x=>x[1]==='UChoose').reduce((a,x)=>a+x[4],0);
  $('dstats').innerHTML=`<div><b>${f(cx)}</b><span>CardX</span></div><div><b>${f(sp)}</b><span>SPayLater</span></div><div><b>${f(uc)}</b><span>UChoose</span></div>`;
  $('dnote').textContent=`รวมผ่อน/หนี้ ${f(s.d)} บาท คิดเป็น ${s.i?Math.round(s.d/s.i*100)+'% ของเงินเข้า':'— (เดือนนี้ยังไม่มีรายรับ)'}`;
  $('months').innerHTML=M.map((x,k)=>`<button class="mb ${k===cur?'on':''} ${all[k].left<0?'neg':''}" onclick="pick(${k})">${x.split(' ')[0]}<br><small style="font-size:9px">${x.split(' ')[1]}</small></button>`).join('');
+ const rem=s.bud-s.spent,pc=s.bud?Math.min(100,s.spent/s.bud*100):(s.spent?100:0);
+ $('lstats').innerHTML=`<div><b>${f(s.bud)}</b><span>งบ</span></div><div><b>${f(s.spent)}</b><span>ใช้ไปแล้ว</span></div><div><b>${f(Math.abs(rem))}</b><span>${rem<0?'เกินงบ':'คงเหลือ'}</span></div>`;
+ $('lbar').innerHTML=`<i style="width:${pc}%;background:${rem<0?'#c2410c':'#151515'}"></i>`;
+ $('lnote').textContent=rem<0&&s.bud?'ใช้เกินงบแล้ว ยอดเงินออกรวมนับตามยอดที่ใช้จริง':'ยอดเงินออกรวมนับตามงบ จนกว่ายอดที่ใช้จริงจะเกินงบ';
  $('lt').textContent=`รายการ ${m}`;
  if(sel>=s.r.length)sel=0;
- $('list').innerHTML=s.r.map((x,k)=>`<button class="it ${k===sel?'on':''}" onclick="sel=${k};render()"><span class="ic">${ICON[x[2]]||'•'}</span><div><b>${x[1]}</b><small>${x[2]}</small></div><span class="amt">${x[3]?'+'+f(x[3]):'−'+f(x[4])}</span></button>`).join('');
+ $('list').innerHTML=s.r.map((x,k)=>`<button class="it ${k===sel?'on':''}" onclick="sel=${k};render()"><span class="ic">${ICON[x[2]]||'•'}</span><div><b>${x[1]}</b><small>${x[1]===BUD&&x[2]===LIFE?'งบประจำเดือน':x[2]}${x[5]?' · '+x[5]:''}</small></div><span class="amt">${x[3]?'+'+f(x[3]):'−'+f(x[4])}</span></button>`).join('');
  const d=s.r[sel],gi=ROWS.indexOf(d);
  $('det').innerHTML=d?`<b style="font-size:18px;font-weight:500;text-decoration:underline">${d[1]}</b><div><span class="chip">${d[2]}</span><span class="chip">${m}</span></div><div class="big">${d[3]?'+'+f(d[3]):'−'+f(d[4])} ฿</div><div class="row"><span>วันที่</span>${d[5]||'ยังไม่ระบุ'}</div><div class="row"><span>หมายเหตุ</span>${d[6]||'-'}</div><div class="acts"><button class="btn" onclick="openForm(${gi})">แก้ไข</button><button class="btn ghost" onclick="delRow(${gi})">ลบ</button></div>`:'<div style="font-size:13px">ยังไม่มีรายการในเดือนนี้</div>';
  $('debtlist').innerHTML=DEBTS.map((x,k)=>{const pr=x[2]>0?x[2]/x[3]*100:0;return`<div class="debt"><div class="top"><b style="font-weight:500">${x[0]}</b><span>${f(x[1])}</span></div><div class="meter"><i style="width:${pr}%"></i></div><small>${x[2]>0?`งวด ${x[2]}/${x[3]} · `:''}${x[4]!=='—'?'สิ้นสุด '+x[4]:'ไม่ระบุงวด'}${x[5]?' · '+x[5]:''}</small>${x[3]>0&&x[2]<x[3]?`<br><button class="btn sm" onclick="bump(${k})">จ่ายแล้ว +1 งวด</button>`:''}</div>`}).join('')+`<span class="pill">ทั้งหมด ${DEBTS.length} รายการ</span>`;
 }
+function quick(){const n=$('qn').value.trim(),a=$('qa').value;if(!n||a===''||+a<0){alert('กรอกว่าซื้ออะไรและจำนวนเงินก่อน');return}
+ const t=new Date(),ds=String(t.getDate()).padStart(2,'0')+'/'+String(t.getMonth()+1).padStart(2,'0')+'/'+t.getFullYear();
+ const mo=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][t.getMonth()]+' '+t.getFullYear();
+ const row=[M[cur],n,LIFE,0,+a,mo===M[cur]?ds:'',''];ROWS.push(row);save();sel=Math.max(0,S(M[cur]).r.indexOf(row));$('qn').value='';$('qa').value='';render();$('qn').focus()}
 function bump(k){DEBTS[k][2]++;save();render()}
 function openForm(i){ei=i;const r=i>=0?ROWS[i]:null;$('dt').textContent=r?'แก้ไขรายการ':'เพิ่มรายการ';
  $('fm').innerHTML=M.map((x,k)=>`<option ${k===(r?M.indexOf(r[0]):cur)?'selected':''}>${x}</option>`).join('');
